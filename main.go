@@ -12,7 +12,7 @@ import (
 
 func main() {
 	router := gin.Default()
-
+	router.LoadHTMLGlob("./static/*.html")
 	// MySQL connection parameters
 	db, err := sql.Open("mysql", "root:@tcp(localhost:3306)/go-webdb")
 	if err != nil {
@@ -55,8 +55,12 @@ func main() {
 		})
 	})
 
-	// Serve static files from the "static" directory
-	router.Static("/", "./static")
+	router.GET("/", func(c *gin.Context) {
+		// Serve static files from the "static" directory
+		//router.Static("/home", "./static")
+		//c.String(http.StatusOK, "Hello from %v", "Gin")
+		c.HTML(http.StatusOK, "index.html", nil)
+	})
 
 	// Start the server
 	if err := router.Run(":8082"); err != nil {

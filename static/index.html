@@ -21,10 +21,12 @@
                 url: "/data",
                 method: "GET",
                 success: function(data) {
-                    var items = data.data;
+                    var items = data.result;
+                    console.log(items)
+                    console.log(items.length)
                     var html = "";
                     for (var i = 0; i < items.length; i++) {
-                        html += "<p>" + items[i] + "</p>";
+                        html += "<p>" + items[i].Id + " " + items[i].FullName + " " + items[i].RollNumber + "</p>";
                     }
                     $("#data").html(html);
                 }
