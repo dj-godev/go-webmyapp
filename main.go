@@ -2,232 +2,131 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 )
 
-func main() {
-	router := gin.Default()
-	router.LoadHTMLGlob("./static/*.html")
-	// MySQL connection parameters
-	db, err := sql.Open("mysql", "root:@tcp(localhost:3306)/go-webdb")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Test the database connection
-	err = db.Ping()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	type User struct {
-		Id         int
-		FullName   string
-		RollNumber string
-	}
-
-	type usersFullName struct {
-		FullName string
-	}
-
-	// Define a route to fetch data from the database
-	router.GET("/data", func(c *gin.Context) {
-		pageStr := c.DefaultQuery("page", "1")
-		limitStr := c.DefaultQuery("limit", "10")
-
-		page, err := strconv.Atoi(pageStr)
-		if err != nil || page < 1 {
-			page = 1
-		}
-
-		limit, err := strconv.Atoi(limitStr)
-		if err != nil || limit < 1 {
-			limit = 10
-		}
-
-		offset := (page - 1) * limit
-
-		var (
-			user  User
-			users []User
-		)
-
-		var (
-			fullName       usersFullName
-			usersFullNames []usersFullName
-		)
-
-		query := fmt.Sprintf("select id, fullName, fullName , roll_number from users LIMIT %d OFFSET %d", limit, offset)
-		rows, err := db.Query(query)
-		if err != nil {
-			fmt.Print(err.Error())
-		}
-		for rows.Next() {
-			err = rows.Scan(&user.Id, &user.FullName, &fullName.FullName, &user.RollNumber)
-			users = append(users, user)
-			usersFullNames = append(usersFullNames, fullName)
-			if err != nil {
-				fmt.Print(err.Error())
-			}
-		}
-
-		defer rows.Close()
-		c.JSON(http.StatusOK, gin.H{
-			"page":   page,
-			"limit":  limit,
-			"result": users,
-			"Names":  usersFullNames,
-			"count":  len(users),
-		})
-	})
-
-	// Define the GET endpoint to retrieve all courses with units
-	router.GET("/courses", func(c *gin.Context) {
-		// Fetch all courses
-		courses, err := getAllCourses(db)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Fetch units for each course
-		// for i := range courses {
-		// 	units, err := getUnitsByCourseID(db, courses[i].Id)
-		// 	if err != nil {
-		// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		// 		return
-		// 	}
-		// 	courses[i].Units = units
-		// }
-
-		// Fetch units and lessons for each course
-		for i := range courses {
-			units, err := getUnitsByCourseID(db, courses[i].Id)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			// Fetch lessons for each unit
-			for j := range units {
-				lessons, err := getLessonsByUnitID(db, units[j].Id)
-				if err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-					return
-				}
-				units[j].Lessons = lessons
-			}
-
-			courses[i].Units = units
-		}
-
-		// Return the courses with lessons as a JSON response
-		//c.JSON(http.StatusOK, courses)
-		c.IndentedJSON(200, courses)
-	})
-
-	router.GET("/", func(c *gin.Context) {
-		// Serve static files from the "static" directory
-		//router.Static("/home", "./static")
-		//c.String(http.StatusOK, "Hello from %v", "Gin")
-		c.HTML(http.StatusOK, "index.html", nil)
-	})
-
-	// Start the server
-	if err := router.Run(":8082"); err != nil {
-		log.Fatal(err)
-	}
-}
-
 // Course represents a course entity
 type Course struct {
-	Id    int    `json:"id"`
-	Name  string `json:"name"`
+	ID    int    `json:"id"`
+	Title string `json:"title"`
 	Units []Unit `json:"units"`
 }
 
 // Unit represents a unit entity
 type Unit struct {
-	Id       int      `json:"id"`
-	CourseId int      `json:"course_id"`
-	Name     string   `json:"name"`
-	Lessons  []Lesson `json:"lessons"`
+	ID      int      `json:"id"`
+	Title   string   `json:"title"`
+	Lessons []Lesson `json:"lessons"`
 }
 
 // Lesson represents a lesson entity
 type Lesson struct {
 	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	UnitId   int    `json:"unit_id"`
+	UnitID   int    `json:"unit_id"`
+	Title    string `json:"title"`
 	Duration int    `json:"duration"`
 }
 
-// getAllCourses retrieves all courses from the database
-func getAllCourses(db *sql.DB) ([]Course, error) {
-	query := "SELECT id, name FROM courses"
-	rows, err := db.Query(query)
+func main() {
+	// Create a new Gin router
+	router := gin.Default()
+
+	// Configure MySQL connection
+	db, err := sql.Open("mysql", "root:@tcp(localhost:3306)/go-webdb")
 	if err != nil {
-		return nil, err
+		log.Fatal(err)
 	}
-	defer rows.Close()
+	defer db.Close()
 
-	var courses []Course
-	for rows.Next() {
-		var course Course
-		err := rows.Scan(&course.Id, &course.Name)
+	// Define the GET endpoint to retrieve all courses with units and lessons
+	router.GET("/courses", func(c *gin.Context) {
+		query := `
+			SELECT
+				courses.id,
+				courses.name,
+				units.id,
+				units.name,
+				lessons.id,
+				lessons.unit_id,
+				lessons.name,
+				lessons.duration
+			FROM
+				courses
+			INNER JOIN
+				units ON courses.id = units.course_id
+			INNER JOIN
+				lessons ON units.id = lessons.unit_id
+		`
+		rows, err := db.Query(query)
 		if err != nil {
-			return nil, err
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
-		courses = append(courses, course)
-	}
-	return courses, nil
-}
+		defer rows.Close()
 
-// getUnitsByCourseID retrieves all units for a given course ID from the database
-func getUnitsByCourseID(db *sql.DB, CourseId int) ([]Unit, error) {
+		courses := make(map[int]*Course)
 
-	query := "SELECT id, name, course_id FROM units WHERE course_id = ?"
-	rows, err := db.Query(query, CourseId)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+		for rows.Next() {
+			var courseID int
+			var courseTitle string
+			var unitID int
+			var unitTitle string
+			var lessonID int
+			var lessonUnitID int
+			var lessonTitle string
+			var lessonDuration int
 
-	var units []Unit
-	for rows.Next() {
-		var unit Unit
-		err := rows.Scan(&unit.Id, &unit.Name, &unit.CourseId)
-		if err != nil {
-			return nil, err
+			err := rows.Scan(
+				&courseID,
+				&courseTitle,
+				&unitID,
+				&unitTitle,
+				&lessonID,
+				&lessonUnitID,
+				&lessonTitle,
+				&lessonDuration,
+			)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			if _, ok := courses[courseID]; !ok {
+				courses[courseID] = &Course{
+					ID:    courseID,
+					Title: courseTitle,
+				}
+			}
+
+			unit := Unit{
+				ID:    unitID,
+				Title: unitTitle,
+			}
+
+			lesson := Lesson{
+				ID:       lessonID,
+				UnitID:   lessonUnitID,
+				Title:    lessonTitle,
+				Duration: lessonDuration,
+			}
+
+			courses[courseID].Units = append(courses[courseID].Units, unit)
+			courses[courseID].Units[unitID].Lessons = append(courses[courseID].Units[unitID].Lessons, lesson)
 		}
-		units = append(units, unit)
-	}
-	return units, nil
-}
 
-// getLessonsByUnitID retrieves all lessons for a given unit ID from the database
-func getLessonsByUnitID(db *sql.DB, unitID int) ([]Lesson, error) {
-	query := "SELECT id, unit_id, name, duration FROM lessons WHERE unit_id = ?"
-	rows, err := db.Query(query, unitID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var lessons []Lesson
-	for rows.Next() {
-		var lesson Lesson
-		err := rows.Scan(&lesson.ID, &lesson.UnitId, &lesson.Name, &lesson.Duration)
-		if err != nil {
-			return nil, err
+		var result []Course
+		for _, course := range courses {
+			result = append(result, *course)
 		}
-		lessons = append(lessons, lesson)
-	}
-	return lessons, nil
+
+		// Return the courses with units and lessons as a JSON response
+		c.JSON(http.StatusOK, result)
+	})
+
+	// Start the server
+	router.Run(":8082")
 }
