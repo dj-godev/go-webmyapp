@@ -97,12 +97,33 @@ func main() {
 		}
 
 		// Fetch units for each course
+		// for i := range courses {
+		// 	units, err := getUnitsByCourseID(db, courses[i].Id)
+		// 	if err != nil {
+		// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// 		return
+		// 	}
+		// 	courses[i].Units = units
+		// }
+
+		// Fetch units and lessons for each course
 		for i := range courses {
 			units, err := getUnitsByCourseID(db, courses[i].Id)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
+
+			// Fetch lessons for each unit
+			for j := range units {
+				lessons, err := getLessonsByUnitID(db, units[j].Id)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+				units[j].Lessons = lessons
+			}
+
 			courses[i].Units = units
 		}
 
@@ -133,9 +154,18 @@ type Course struct {
 
 // Unit represents a unit entity
 type Unit struct {
-	Id       int    `json:"id"`
-	CourseId int    `json:"course_id"`
+	Id       int      `json:"id"`
+	CourseId int      `json:"course_id"`
+	Name     string   `json:"name"`
+	Lessons  []Lesson `json:"lessons"`
+}
+
+// Lesson represents a lesson entity
+type Lesson struct {
+	ID       int    `json:"id"`
 	Name     string `json:"name"`
+	UnitId   int    `json:"unit_id"`
+	Duration int    `json:"duration"`
 }
 
 // getAllCourses retrieves all courses from the database
@@ -179,4 +209,25 @@ func getUnitsByCourseID(db *sql.DB, CourseId int) ([]Unit, error) {
 		units = append(units, unit)
 	}
 	return units, nil
+}
+
+// getLessonsByUnitID retrieves all lessons for a given unit ID from the database
+func getLessonsByUnitID(db *sql.DB, unitID int) ([]Lesson, error) {
+	query := "SELECT id, unit_id, name, duration FROM lessons WHERE unit_id = ?"
+	rows, err := db.Query(query, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var lessons []Lesson
+	for rows.Next() {
+		var lesson Lesson
+		err := rows.Scan(&lesson.ID, &lesson.UnitId, &lesson.Name, &lesson.Duration)
+		if err != nil {
+			return nil, err
+		}
+		lessons = append(lessons, lesson)
+	}
+	return lessons, nil
 }
